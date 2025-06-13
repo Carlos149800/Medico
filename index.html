@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Formulario Médico</title>
+  <link rel="stylesheet" href="estilo.css" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="validacion.js"></script>
+  <style>
+    .form-step { display: none; }
+    .form-step.active { display: block; }
+    .progress-bar { display: none; margin-bottom: 20px; }
+    .progress-bar ul { list-style: none; display: flex; justify-content: space-between; }
+    .progress-bar li { font-weight: bold; }
+    .progress-bar li.active { color: #007bff; }
+    .error { color: red; font-size: 0.8em; }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const planSelect = document.getElementById('plan_contratado');
+      const gratuitoFields = document.getElementById('gratuito-fields');
+      const mejoradoFields = document.getElementById('mejorado-fields');
+      const progressBar = document.getElementById('progress-bar');
+      const steps = document.querySelectorAll('.form-step');
+      const nextButtons = document.querySelectorAll('.next-step');
+      const prevButtons = document.querySelectorAll('.prev-step');
+      const cpInputs = document.querySelectorAll('input[name="cp"]');
+      const fraccionamientoSelects = document.querySelectorAll('select[name="fraccionamiento"]');
+      const fraccionamientoOtroDivs = document.querySelectorAll('[id*="fraccionamiento-otro-div"]');
+      let currentStep = 0;
+
+      function showPlanFields() {
+        const plan = planSelect.value;
+        if (plan === 'Gratuito') {
+          gratuitoFields.style.display = 'block';
+          mejoradoFields.style.display = 'none';
+          progressBar.style.display = 'none';
+        } else if (plan === 'Mejorado') {
+          gratuitoFields.style.display = 'none';
+          mejoradoFields.style.display = 'block';
+          progressBar.style.display = 'block';
+          showStep(0);
+        }
+      }
+
+      function showStep(stepIndex) {
+        steps.forEach((step, index) => {
+          step.classList.toggle('active', index === stepIndex);
+        });
+        document.querySelectorAll('.progress-bar li').forEach((li, index) => {
+          li.classList.toggle('active', index <= stepIndex);
+        });
+        currentStep = stepIndex;
+      }
+
+      planSelect.addEventListener('change', showPlanFields);
+
+      nextButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          if (currentStep < steps.length - 1) {
+            showStep(currentStep + 1);
+          }
+        });
+      });
+
+      prevButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          if (currentStep > 0) {
+            showStep(currentStep - 1);
+          }
+        });
+      });
+
+      // Use populateFraccionamientos from validacion.js
+      cpInputs.forEach((input, index) => {
+        input.addEventListener('input', async (e) => {
+          const cp = e.target.value.trim();
+          if (cp.length === 5 && /^\d{5}$/.test(cp)) {
+            await populateFraccionamientos(cp, fraccionamientoSelects[index], fraccionamientoOtroDivs[index]);
+          } else {
+            fraccionamientoSelects[index].disabled = true;
+            fraccionamientoSelects[index].innerHTML = '<option value="" disabled selected>Ingrese un CP válido</option>';
+            fraccionamientoOtroDivs[index].style.display = 'none';
+          }
+        });
+      });
+
+      fraccionamientoSelects.forEach((select, index) => {
+        select.addEventListener('change', (e) => {
+          fraccionamientoOtroDivs[index].style.display = e.target.value === 'Otro' ? 'block' : 'none';
+        });
+      });
+
+      document.getElementById('especialidad').addEventListener('change', (e) => {
+        document.getElementById('especialidad-otro-div').style.display = e.target.value === 'Otra' ? 'block' : 'none';
+      });
+
+      document.querySelector('select[name="especialidad"]').addEventListener('change', (e) => {
+        document.getElementById('especialidad-otro-div-mejorado').style.display = e.target.value === 'Otra' ? 'block' : 'none';
+      });
+
+      // Initialize QR code and signature canvas from validacion.js
+      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+      if (isMobile) {
+        // For mobile devices, show canvas for both plans, but keep file input for Gratuito as standard
+        document.querySelectorAll('.signature-canvas-container').forEach(container => {
+          container.style.display = 'block';
+        });
+        // Initialize canvas for both plans on mobile
+        initSignatureCanvas('firma_asesor_canvas', 'firma_asesor_data');
+        initSignatureCanvas('firma_contratante_canvas', 'firma_contratante_data');
+      } else {
+        // On desktop, Gratuito uses file input (standard), Mejorado uses canvas
+        const plan = planSelect.value;
+        if (plan === 'Gratuito') {
+          document.querySelectorAll('.signature-file').forEach(input => input.style.display = 'block');
+          document.querySelectorAll('.signature-canvas-container').forEach(container => container.style.display = 'none');
+        } else if (plan === 'Mejorado') {
+          document.querySelectorAll('.signature-file').forEach(input => input.style.display = 'none');
+          document.querySelectorAll('.signature-canvas-container').forEach(container => container.style.display = 'block');
+          initSignatureCanvas('firma_asesor_canvas', 'firma_asesor_data');
+          initSignatureCanvas('firma_contratante_canvas', 'firma_contratante_data');
+        }
+        // Update signature input visibility when plan changes
+        planSelect.addEventListener('change', () => {
+          const newPlan = planSelect.value;
+          if (newPlan === 'Gratuito') {
+            document.querySelectorAll('.signature-file').forEach(input => input.style.display = 'block');
+            document.querySelectorAll('.signature-canvas-container').forEach(container => container.style.display = 'none');
+          } else if (newPlan === 'Mejorado') {
+            document.querySelectorAll('.signature-file').forEach(input => input.style.display = 'none');
+            document.querySelectorAll('.signature-canvas-container').forEach(container => container.style.display = 'block');
+            initSignatureCanvas('firma_asesor_canvas', 'firma_asesor_data');
+            initSignatureCanvas('firma_contratante_canvas', 'firma_contratante_data');
+          }
+        });
+      }
+
+      document.querySelectorAll('.clear-signature').forEach(button => {
+        button.addEventListener('click', () => clearSignature(button.dataset.canvas));
+      });
+
+      // Use functions from validacion.js for QR code
+      populateFormFromQR();
+      generateQRCode();
+
+      document.getElementById('formulario-medico').addEventListener('input', generateQRCode);
+
+      showPlanFields();
+
+      // Form validation before submission
+      document.getElementById('formulario-medico').addEventListener('submit', (e) => {
+        let isValid = true;
+        const plan = planSelect.value;
+        const requiredFields = plan === 'Gratuito' ? gratuitoFields.querySelectorAll('[required]') : mejoradoFields.querySelectorAll('[required]');
+        
+        requiredFields.forEach(field => {
+          if (!field.value.trim()) {
+            showError(field, 'Este campo es obligatorio');
+            isValid = false;
+          } else if (field.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(field.value)) {
+            showError(field, 'Ingrese un correo válido');
+            isValid = false;
+          }
+        });
+
+        if (!isValid) {
+          e.preventDefault();
+        }
+      });
+    });
+
+    function clearSignature(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const hiddenInput = document.getElementById(canvasId.replace('_canvas', '_data'));
+      hiddenInput.value = '';
+    }
+  </script>
+</head>
+<body>
+  <form action="guardar_datos.php" method="POST" enctype="multipart/form-data" id="formulario-medico">
+    <h2>Datos del Consultorio</h2>
+
+    <label>Plan contratado:
+      <select name="plan_contratado" id="plan_contratado" required>
+        <option value="" disabled selected>Seleccione un plan</option>
+        <option value="Gratuito">Gratuito</option>
+        <option value="Mejorado">Mejorado</option>
+      </select>
+      <div class="error"></div>
+    </label>
+
+    <div id="progress-bar" class="progress-bar">
+      <ul>
+        <li class="active">Datos Básicos</li>
+        <li>Dirección</li>
+        <li>Información Profesional</li>
+        <li>Costos y Horarios</li>
+        <li>Presencia Online</li>
+        <li>Documentación</li>
+      </ul>
+    </div>
+
+    <div id="gratuito-fields">
+      <label>Nombre:
+        <input type="text" name="nombre" required />
+        <div class="error"></div>
+      </label>
+      <label>Apellido Paterno:
+        <input type="text" name="apellido_paterno" required />
+        <div class="error"></div>
+      </label>
+      <label>Apellido Materno:
+        <input type="text" name="apellido_materno" required />
+        <div class="error"></div>
+      </label>
+      <label>Especialidad / Clasificación:
+        <select name="especialidad" id="especialidad" required>
+          <option value="" disabled selected>Seleccione especialidad</option>
+          <option value="Alergología">Alergología</option>
+          <option value="Anestesiología">Anestesiología</option>
+          <option value="Cardiología">Cardiología</option>
+          <option value="Cirugía General">Cirugía General</option>
+          <option value="Dermatología">Dermatología</option>
+          <option value="Endocrinología">Endocrinología</option>
+          <option value="Gastroenterología">Gastroenterología</option>
+          <option value="Geriatría">Geriatría</option>
+          <option value="Ginecología y Obstetricia">Ginecología y Obstetricia</option>
+          <option value="Hematología">Hematología</option>
+          <option value="Infectología">Infectología</option>
+          <option value="Medicina General">Medicina General</option>
+          <option value="Medicina Interna">Medicina Interna</option>
+          <option value="Nefrología">Nefrología</option>
+          <option value="Neumología">Neumología</option>
+          <option value="Neurología">Neurología</option>
+          <option value="Nutriología">Nutriología</option>
+          <option value="Oftalmología">Oftalmología</option>
+          <option value="Oncología">Oncología</option>
+          <option value="Ortopedia">Ortopedia</option>
+          <option value="Otorrinolaringología">Otorrinolaringología</option>
+          <option value="Pediatría">Pediatría</option>
+          <option value="Psiquiatría">Psiquiatría</option>
+          <option value="Reumatología">Reumatología</option>
+          <option value="Traumatología">Traumatología</option>
+          <option value="Urología">Urología</option>
+          <option value="Otra">Otra</option>
+        </select>
+        <div class="error"></div>
+      </label>
+      <div id="especialidad-otro-div" style="display:none;">
+        <label>Otra especialidad:
+          <input type="text" id="especialidad-otro" name="especialidad_otro" />
+          <div class="error"></div>
+        </label>
+      </div>
+      <label>Correo Electrónico:
+        <input type="email" name="email" required />
+        <div class="error"></div>
+      </label>
+      <label>Teléfono WhatsApp:
+        <input type="text" name="telefono_mensajes" required />
+        <div class="error"></div>
+      </label>
+      <label>Estado:
+  <input type="text" name="estado" value="Aguascalientes" readonly>
+</label>
+<label>Municipio:
+  <select name="municipio" required>
+    <option value="Aguascalientes">Aguascalientes</option>
+    <option value="Asientos">Asientos</option>
+    <option value="Calvillo">Calvillo</option>
+    <option value="Cosío">Cosío</option>
+    <option value="Jesús María">Jesús María</option>
+    <option value="Pabellón de Arteaga">Pabellón de Arteaga</option>
+    <option value="Rincón de Romos">Rincón de Romos</option>
+    <option value="San Francisco de los Romo">San Francisco de los Romo</option>
+    <option value="San José de Gracia">San José de Gracia</option>
+    <option value="Tepezalá">Tepezalá</option>
+    <option value="El Llano">El Llano</option>
+  </select>
+  <div class="error"></div>
+</label>
+      <label>Código Postal:
+        <input type="text" name="cp" id="cp" required maxlength="5" />
+        <div class="error"></div>
+      </label>
+ <div class="form-group">
+  <label for="calle">Calle:
+    <input type="text" name="calle" id="calle" placeholder="Ej. Avenida Reforma" required />
+    <div class="error"></div>
+  </label>
+</div>
+
+<div class="form-inline">
+  <label for="numero_exterior">Número Exterior:
+    <input type="text" name="numero_exterior" id="numero_exterior" placeholder="Ej. 123" required />
+    <div class="error"></div>
+  </label>
+
+  <label for="numero_interior">Número Interior:
+    <input type="text" name="numero_interior" id="numero_interior" placeholder="Ej. 4B" />
+    <div class="error"></div>
+  </label>
+</div>
+
+      <label>Fraccionamiento o Colonia:
+        <select name="fraccionamiento" id="fraccionamiento" required>
+          <option value="" disabled selected>Seleccione un fraccionamiento</option>
+        </select>
+        <div class="error"></div>
+      </label>
+      <div id="fraccionamiento-otro-div" style="display:none;">
+        <label>Otro fraccionamiento:
+          <input type="text" id="fraccionamiento-otro" name="fraccionamiento_otro" />
+        </label>
+      </div>
+      <label>Cédula Profesional:
+        <input type="text" name="cedula_profesional" required />
+        <div class="error"></div>
+      </label>
+      <label>Tipo de personas que atiende:
+        <input type="text" name="tipo_personas" required />
+        <div class="error"></div>
+      </label>
+      <label>Servicios principales / especialista en:
+        <textarea name="servicios_principales" required></textarea>
+        <div class="error"></div>
+      </label>
+      <fieldset>
+        <legend>Imágenes de Perfil (Gratuito - Estándar)</legend>
+        <label>Subir Imagen:
+          <input type="file" name="imagen_perfil" accept="image/*" required />
+          <div class="error"></div>
+        </label>
+      </fieldset>
+    </div>
+<div id="qr-container">
+  <h3>Escanea este QR para continuar en tu teléfono</h3>
+  <canvas id="codigoQR"></canvas>
+</div>
+    <div id="mejorado-fields" style="display:none;">
+      <div class="form-step active">
+        <h3>Datos Básicos</h3>
+        <label>Nombre / Razón Social:
+          <input type="text" name="nombre" required />
+          <div class="error"></div>
+        </label>
+        <label>RFC:
+          <input type="text" name="rfc" required />
+          <div class="error"></div>
+        </label>
+        <label>Especialidad / Clasificación:
+          <select name="especialidad" required>
+            <option value="" disabled selected>Seleccione especialidad</option>
+            <option value="Alergología">Alergología</option>
+            <option value="Anestesiología">Anestesiología</option>
+            <option value="Cardiología">Cardiología</option>
+            <option value="Cirugía General">Cirugía General</option>
+            <option value="Dermatología">Dermatología</option>
+            <option value="Endocrinología">Endocrinología</option>
+            <option value="Gastroenterología">Gastroenterología</option>
+            <option value="Geriatría">Geriatría</option>
+            <option value="Ginecología y Obstetricia">Ginecología y Obstetricia</option>
+            <option value="Hematología">Hematología</option>
+            <option value="Infectología">Infectología</option>
+            <option value="Medicina General">Medicina General</option>
+            <option value="Medicina Interna">Medicina Interna</option>
+            <option value="Nefrología">Nefrología</option>
+            <option value="Neumología">Neumología</option>
+            <option value="Neurología">Neurología</option>
+            <option value="Nutriología">Nutriología</option>
+            <option value="Oftalmología">Oftalmología</option>
+            <option value="Oncología">Oncología</option>
+            <option value="Ortopedia">Ortopedia</option>
+            <option value="Otorrinolaringología">Otorrinolaringología</option>
+            <option value="Pediatría">Pediatría</option>
+            <option value="Psiquiatría">Psiquiatría</option>
+            <option value="Reumatología">Reumatología</option>
+            <option value="Traumatología">Traumatología</option>
+            <option value="Urología">Urología</option>
+            <option value="Otra">Otra</option>
+          </select>
+          <div class="error"></div>
+        </label>
+        <div id="especialidad-otro-div-mejorado" style="display:none;">
+          <label>Otra especialidad:
+            <input type="text" name="especialidad_otro" />
+            <div class="error"></div>
+          </label>
+        </div>
+        <button type="button" class="next-step">Siguiente</button>
+      </div>
+
+      <div class="form-step">
+        <h3>Dirección</h3>
+        <label>Código Postal:
+          <input type="text" name="cp" required maxlength="5" />
+          <div class="error"></div>
+        </label>
+        <label>Fraccionamiento:
+          <select name="fraccionamiento" required>
+            <option value="" disabled selected>Seleccione un fraccionamiento</option>
+          </select>
+          <div class="error"></div>
+        </label>
+        <div id="fraccionamiento-otro-div-mejorado" style="display:none;">
+          <label>Otro fraccionamiento:
+            <input type="text" name="fraccionamiento_otro" />
+          </label>
+        </div>
+        <label>Número Exterior:
+          <input type="text" name="num_ext" />
+        </label>
+        <label>Número Interior:
+          <input type="text" name="num_int" />
+        </label>
+        <label>Estado:
+          <input type="text" name="estado" value="Aguascalientes" readonly />
+        </label>
+        <label>Municipio:
+          <select name="municipio" required>
+            <option value="Aguascalientes">Aguascalientes</option>
+            <option value="Asientos">Asientos</option>
+            <option value="Calvillo">Calvillo</option>
+            <option value="Cosío">Cosío</option>
+            <option value="Jesús María">Jesús María</option>
+            <option value="Pabellón de Arteaga">Pabellón de Arteaga</option>
+            <option value="Rincón de Romos">Rincón de Romos</option>
+            <option value="San Francisco de los Romo">San Francisco de los Romo</option>
+            <option value="San José de Gracia">San José de Gracia</option>
+            <option value="Tepezalá">Tepezalá</option>
+            <option value="El Llano">El Llano</option>
+          </select>
+          <div class="error"></div>
+        </label>
+        <button type="button" class="prev-step">Anterior</button>
+        <button type="button" class="next-step">Siguiente</button>
+      </div>
+
+      <div class="form-step">
+        <h3>Información Profesional</h3>
+        <label>Cédula Profesional:
+          <input type="text" name="cedula_profesional" required />
+          <div class="error"></div>
+        </label>
+        <label>Cédula Especialidad:
+          <input type="text" name="cedula_especialidad" />
+        </label>
+        <label>Tipo de personas que atiende:
+          <input type="text" name="tipo_personas" required />
+          <div class="error"></div>
+        </label>
+        <label>Servicios principales / especialista en:
+          <textarea name="servicios_principales" required></textarea>
+          <div class="error"></div>
+        </label>
+        <label>Formación profesional:
+          <textarea name="formacion_profesional" required></textarea>
+          <div class="error"></div>
+        </label>
+        <button type="button" class="prev-step">Anterior</button>
+        <button type="button" class="next-step">Siguiente</button>
+      </div>
+
+      <div class="form-step">
+        <h3>Costos y Horarios</h3>
+        <label>Horario de consulta:
+          <input type="text" name="horario" required />
+          <div class="error"></div>
+        </label>
+        <label>Costo / Consulta primera vez:
+          <input type="number" name="costo_primera" required />
+          <div class="error"></div>
+        </label>
+        <label>Costo / Consulta subsecuente:
+          <input type="number" name="costo_subsecuente" required />
+          <div class="error"></div>
+        </label>
+        <label>Otro costo:
+          <input type="text" name="otro_costo" />
+        </label>
+        <fieldset>
+          <legend>Medios de Pago</legend>
+          <label><input type="checkbox" name="pago_efectivo" /> Efectivo</label>
+          <label><input type="checkbox" name="pago_transferencia" /> Transferencia</label>
+          <label><input type="checkbox" name="pago_tarjeta" /> Tarjeta de Crédito</label>
+          <label>¿Acepta aseguradoras? ¿Cuáles?:
+            <input type="text" name="aseguradoras" />
+          </label>
+        </fieldset>
+        <button type="button" class="prev-step">Anterior</button>
+        <button type="button" class="next-step">Siguiente</button>
+      </div>
+
+      <div class="form-step">
+        <h3>Presencia Online</h3>
+        <label>Página Facebook (Opcional):
+          <input type="text" name="facebook" />
+        </label>
+        <label>Sitio Web (Opcional):
+          <input type="url" name="sitio_web" />
+        </label>
+        <label>Google My Business:
+          <input type="radio" name="gmb" value="si" /> Sí
+          <input type="radio" name="gmb" value="no" /> No
+        </label>
+        <label>Gmail (Opcional):
+          <input type="email" name="gmail" />
+        </label>
+        <label>URL perfil agsmedico.com como sitio oficial:
+          <input type="radio" name="url_agsmedico" value="si" /> Sí
+          <input type="radio" name="url_agsmedico" value="no" /> No
+        </label>
+        <button type="button" class="prev-step">Anterior</button>
+        <button type="button" class="next-step">Siguiente</button>
+      </div>
+
+      <div class="form-step">
+        <h3>Documentación Administrativa</h3>
+        <fieldset>
+          <legend>Imágenes de Perfil</legend>
+          <label><input type="checkbox" name="imagen_generica" /> Imagen Genérica</label>
+          <label><input type="checkbox" name="entrega_fotografia" /> Entrega Fotografía</label>
+          <label><input type="checkbox" name="servicio_fotografia" /> Servicio de Fotografía</label>
+          <label><input type="checkbox" name="entrega_logo" /> Entrega Logo</label>
+          <label>Subir Archivos:
+            <input type="file" name="archivos[]" multiple accept="image/*" />
+          </label>
+          <div id="qr-container">
+  <h3>Escanea este QR para continuar en tu teléfono</h3>
+  <canvas id="codigoQR"></canvas>
+</div>
+        </fieldset>
+        <label>Firma del Asesor:
+          <input type="file" name="firma_asesor" accept="image/*" class="signature-file" style="display:none;" />
+          <div class="signature-canvas-container" style="display:none;">
+            <canvas id="firma_asesor_canvas" width="300" height="150"></canvas>
+            <button type="button" class="clear-signature" data-canvas="firma_asesor_canvas">Borrar Firma</button>
+            <input type="hidden" name="firma_asesor_data" id="firma_asesor_data" />
+          </div>
+        </label>
+        <label>Nombre y firma del contratante:
+          <input type="file" name="firma_contratante" accept="image/*" class="signature-file" style="display:none;" />
+          <div class="signature-canvas-container" style="display:none;">
+            <canvas id="firma_contratante_canvas" width="300" height="150"></canvas>
+            <button type="button" class="clear-signature" data-canvas="firma_contratante_canvas">Borrar Firma</button>
+            <input type="hidden" name="firma_contratante_data" id="firma_contratante_data" />
+          </div>
+        </label>
+        <button type="button" class="prev-step">Anterior</button>
+      </div>
+    </div>
+
+    <button type="submit">Enviar</button>
+  </form>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const url = window.location.href;
+    const canvas = document.getElementById("codigoQR");
+
+    QRCode.toCanvas(canvas, url, { width: 200 }, function (error) {
+      if (error) {
+        console.error("Error generando el QR:", error);
+      } else {
+        console.log("Código QR generado correctamente.");
+      }
+    });
+  });
+</script>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const inputs = document.querySelectorAll("input[required]");
+
+    inputs.forEach(input => {
+      input.addEventListener("input", () => {
+        if (input.checkValidity()) {
+          input.classList.add("valid");
+          input.classList.remove("invalid");
+        } else {
+          input.classList.add("invalid");
+          input.classList.remove("valid");
+        }
+      });
+    });
+  });
+</script>
+
+
+</body>
+</html>
